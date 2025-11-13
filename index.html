@@ -1,13 +1,50 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>弯道跑计分系统</title>
+    <title>体育工具系统</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 </head>
+
 <body>
-    <div class="container">
+    <!-- 导航栏 -->
+    <nav class="main-nav">
+        <div class="nav-container">
+            <a href="index.html" class="nav-brand">🏃‍♂️ 体育工具系统</a>
+            <div class="nav-menu">
+                <a href="index.html?scoring" class="nav-item" id="nav-scoring">弯道跑计分</a>
+                <a href="index.html?compare" class="nav-item" id="nav-compare">体测数据对比</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主页欢迎界面 -->
+    <div id="home-page" class="home-container" style="display: none;">
+        <header class="home-header">
+            <h1>🏃‍♂️ 体育工具系统</h1>
+            <p class="subtitle">为小张服务的体育比赛与数据管理工具集</p>
+        </header>
+        <div class="tool-cards">
+            <div class="tool-card" onclick="window.location.href='index.html?scoring'">
+                <div class="tool-icon">🏃‍♂️</div>
+                <h3>弯道跑计分系统</h3>
+                <p>简单、准确、易用的比赛计分工具</p>
+                <button class="btn btn-primary">开始使用</button>
+            </div>
+            <div class="tool-card" onclick="window.location.href='index.html?compare'">
+                <div class="tool-icon">📊</div>
+                <h3>体测数据对比</h3>
+                <p>可视化体测数据对比分析工具</p>
+                <button class="btn btn-primary">开始使用</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 弯道跑计分系统 -->
+    <div id="scoring-page" class="container" style="display: none;">
         <header>
             <h1>🏃‍♂️ 弯道跑计分系统</h1>
             <p class="subtitle">简单、准确、易用的比赛计分工具</p>
@@ -72,10 +109,277 @@
         </div>
     </div>
 
-    <footer>
+    <!-- <footer>
         <p>&copy; 2025 弯道跑计分系统 | 数据自动保存到本地</p>
-    </footer>
+    </footer> -->
+    </div>
 
+    <!-- 体测数据对比系统 -->
+    <div id="compare-page" style="display: none;">
+        <div class="compare-container">
+            <h2>体测数据对比管理</h2>
+            <div class="compare-controls">
+                <label>图表标题：<input type="text" id="chartTitleInput" value="2301班2024与2025体测数据对比"
+                        style="width:300px;"></label>
+                <button id="addProjectBtn" class="btn btn-primary">➕ 添加项目</button>
+                <button id="addSeriesBtn" class="btn btn-primary">➕ 添加系列</button>
+                <button id="updateChartBtn" class="btn btn-success">🔄 刷新图表</button>
+                <button id="exportBtn" class="btn btn-secondary">📤 导出图片</button>
+            </div>
+
+            <table id="dataTable">
+                <thead id="tableHead">
+                    <!-- 动态表头 -->
+                </thead>
+                <tbody id="tableBody">
+                    <!-- 数据行 -->
+                </tbody>
+            </table>
+
+            <div id="chart"></div>
+        </div>
+    </div>
+
+    <!-- 弯道跑计分系统脚本 -->
     <script src="script.js"></script>
+
+    <!-- 路由脚本 -->
+    <script>
+        // 路由逻辑
+        function initRouter() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const homePage = document.getElementById('home-page');
+            const scoringPage = document.getElementById('scoring-page');
+            const comparePage = document.getElementById('compare-page');
+            const navScoring = document.getElementById('nav-scoring');
+            const navCompare = document.getElementById('nav-compare');
+
+            // 隐藏所有页面
+            homePage.style.display = 'none';
+            scoringPage.style.display = 'none';
+            comparePage.style.display = 'none';
+
+            // 移除所有导航活动状态
+            navScoring.classList.remove('active');
+            navCompare.classList.remove('active');
+
+            if (urlParams.has('scoring')) {
+                // 显示弯道跑计分系统
+                scoringPage.style.display = 'block';
+                navScoring.classList.add('active');
+                document.title = '弯道跑计分系统 - 体育工具系统';
+                // 初始化弯道跑计分系统
+                setTimeout(() => {
+                    if (typeof initScoringSystem === 'function') {
+                        initScoringSystem();
+                    }
+                }, 0);
+            } else if (urlParams.has('compare')) {
+                // 显示体测数据对比系统
+                comparePage.style.display = 'block';
+                navCompare.classList.add('active');
+                document.title = '体测数据对比 - 体育工具系统';
+                // 初始化体测数据对比系统
+                setTimeout(() => {
+                    initCompareSystem();
+                }, 0);
+            } else {
+                // 显示主页
+                homePage.style.display = 'block';
+                document.title = '体育工具系统';
+            }
+        }
+
+        // 页面加载时初始化路由
+        window.addEventListener('DOMContentLoaded', initRouter);
+    </script>
+
+    <!-- 体测数据对比系统脚本 -->
+    <script>
+        let chartInstance = null;
+        let projectData = [];
+        let seriesNames = [];
+
+        function initCompareSystem() {
+            // 默认数据
+            projectData = [
+                { name: '肺活量', data: [18, 11, 12, 11, 13, 15] },
+                { name: '50米', data: [3, 4, 33, 7, 14, 18] },
+                { name: '坐位体前屈', data: [5, 8, 28, 8, 14, 17] },
+                { name: '一分钟跳绳', data: [31, 8, 1, 37, 1, 1] },
+                { name: '一分钟仰卧起坐', data: [0, 0, 0, 15, 9, 15] },
+            ];
+
+            seriesNames = ['2024优秀', '2024良好', '2024及格', '2025优秀', '2025良好', '2025及格'];
+
+            const chartDom = document.getElementById('chart');
+            chartInstance = echarts.init(chartDom);
+
+            renderTableHead();
+            renderTable();
+            renderChart();
+
+            window.addEventListener('resize', () => chartInstance.resize());
+
+            // 绑定按钮事件
+            document.getElementById('addProjectBtn').addEventListener('click', addProject);
+            document.getElementById('addSeriesBtn').addEventListener('click', addSeries);
+            document.getElementById('updateChartBtn').addEventListener('click', updateChart);
+            document.getElementById('exportBtn').addEventListener('click', exportChart);
+        }
+
+        const colorPalette = ['#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC', '#FF9F7F', '#FFDB5C', '#37A2DA'];
+
+        function getColor(index) {
+            return colorPalette[index % colorPalette.length];
+        }
+
+        function renderTableHead() {
+            const thead = document.getElementById('tableHead');
+            thead.innerHTML = '';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <th>项目名称</th>
+                ${seriesNames.map((name, i) => `
+                    <th>
+                        <input type="text" value="${name}" data-series-index="${i}" class="seriesName">
+                        <button data-series-index="${i}" class="deleteSeriesBtn">🗑️</button>
+                    </th>
+                `).join('')}
+                <th>删除</th>
+            `;
+            thead.appendChild(tr);
+
+            document.querySelectorAll('.seriesName').forEach(input => {
+                input.addEventListener('blur', e => {
+                    const idx = parseInt(e.target.dataset.seriesIndex);
+                    seriesNames[idx] = e.target.value;
+                    renderChart();
+                });
+            });
+
+            document.querySelectorAll('.deleteSeriesBtn').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    const index = parseInt(e.target.dataset.seriesIndex);
+                    seriesNames.splice(index, 1);
+                    projectData.forEach(proj => {
+                        proj.data.splice(index, 1);
+                    });
+                    renderTableHead();
+                    renderTable();
+                    renderChart();
+                });
+            });
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            projectData.forEach((proj, i) => {
+                while (proj.data.length < seriesNames.length) {
+                    proj.data.push(0);
+                }
+                while (proj.data.length > seriesNames.length) {
+                    proj.data.pop();
+                }
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><input type="text" value="${proj.name}" data-index="${i}" class="projName"></td>
+                    ${proj.data.map((v, j) => `<td><input type="number" value="${v}" data-row="${i}" data-col="${j}" class="projData"></td>`).join('')}
+                    <td><button data-index="${i}" class="deleteBtn">🗑️</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.querySelectorAll('.deleteBtn').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    const index = e.target.dataset.index;
+                    projectData.splice(index, 1);
+                    renderTable();
+                });
+            });
+        }
+
+        function renderChart() {
+            const categories = projectData.map(p => p.name);
+            const series = seriesNames.map((name, i) => ({
+                name,
+                type: 'bar',
+                data: projectData.map(p => {
+                    return p.data[i] !== undefined ? p.data[i] : 0;
+                }),
+                itemStyle: { color: getColor(i) },
+                label: { show: true, position: 'top', fontSize: 12 }
+            }));
+
+            const option = {
+                title: {
+                    text: document.getElementById('chartTitleInput').value,
+                    left: 'center', top: 10, textStyle: { fontSize: 22, fontWeight: 'bold' }
+                },
+                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                legend: { top: 50, data: seriesNames },
+                grid: { left: '5%', right: '5%', bottom: '15%', containLabel: true },
+                xAxis: {
+                    type: 'category',
+                    data: categories,
+                    axisLabel: {
+                        fontSize: 14,
+                        interval: 0,
+                    }
+                },
+                yAxis: { type: 'value', name: '人数（人）', nameTextStyle: { fontSize: 14 } },
+                dataZoom: [
+                    { type: 'slider', show: true, xAxisIndex: 0, start: 0, end: 100 },
+                    { type: 'inside', xAxisIndex: 0 }
+                ],
+                series
+            };
+
+            chartInstance.setOption(option, true);
+        }
+
+        function addProject() {
+            const newData = new Array(seriesNames.length).fill(0);
+            projectData.push({ name: '新项目', data: newData });
+            renderTable();
+        }
+
+        function addSeries() {
+            const newSeriesName = prompt('请输入新系列名称（例如：2024不及格）:', '2024不及格');
+            if (newSeriesName && newSeriesName.trim()) {
+                seriesNames.push(newSeriesName.trim());
+                projectData.forEach(proj => {
+                    proj.data.push(0);
+                });
+                renderTableHead();
+                renderTable();
+                renderChart();
+            }
+        }
+
+        function updateChart() {
+            document.querySelectorAll('.projName').forEach(input => {
+                const idx = input.dataset.index;
+                projectData[idx].name = input.value;
+            });
+            document.querySelectorAll('.projData').forEach(input => {
+                const row = input.dataset.row;
+                const col = input.dataset.col;
+                projectData[row].data[col] = Number(input.value);
+            });
+            renderChart();
+        }
+
+        function exportChart() {
+            const img = chartInstance.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
+            const link = document.createElement('a');
+            link.href = img;
+            link.download = document.getElementById('chartTitleInput').value + '.png';
+            link.click();
+        }
+    </script>
 </body>
-</html> 
+
+</html>

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+  <meta charset="UTF-8">
+  <title>体测数据对比</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", sans-serif;
+      background: #f8fafc;
+      padding: 20px;
+    }
+
+    #chart {
+      width: 90%;
+      height: 600px;
+      margin-top: 20px;
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      padding: 4px 6px;
+      font-size: 13px;
+      width: 80px;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin-top: 10px;
+      width: 100%;
+      max-width: 1200px;
+    }
+
+    th,
+    td {
+      border: 1px solid #ccc;
+      padding: 4px 8px;
+      text-align: center;
+    }
+
+    th {
+      background: #e2e8f0;
+      position: relative;
+    }
+
+    .seriesName {
+      width: 100px;
+      text-align: center;
+      border: 1px solid transparent;
+      background: transparent;
+      font-weight: bold;
+      padding: 2px 4px;
+    }
+
+    .seriesName:hover {
+      border: 1px solid #94a3b8;
+      background: #f1f5f9;
+    }
+
+    .seriesName:focus {
+      border: 1px solid #2563eb;
+      background: white;
+      outline: none;
+    }
+
+    .deleteSeriesBtn {
+      margin-left: 5px;
+      padding: 2px 6px;
+      font-size: 12px;
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    .deleteSeriesBtn:hover {
+      background: #dc2626;
+    }
+
+    button {
+      margin-top: 10px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background: #1e40af;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h2>体测数据对比管理</h2>
+  <label>图表标题：<input type="text" id="chartTitleInput" value="2301班2024与2025体测数据对比" style="width:300px;"></label>
+  <button id="addProjectBtn">➕ 添加项目</button>
+  <button id="addSeriesBtn">➕ 添加系列</button>
+  <button id="updateChartBtn">🔄 刷新图表</button>
+  <button id="exportBtn">📤 导出图片</button>
+
+  <table id="dataTable">
+    <thead id="tableHead">
+      <!-- 动态表头 -->
+    </thead>
+    <tbody id="tableBody">
+      <!-- 数据行 -->
+    </tbody>
+  </table>
+
+  <div id="chart"></div>
+
+  <script>
+    const chartDom = document.getElementById('chart');
+    const myChart = echarts.init(chartDom);
+
+    // 默认数据
+    let projectData = [
+      { name: '肺活量', data: [18, 11, 12, 11, 13, 15] },
+      { name: '50米', data: [3, 4, 33, 7, 14, 18] },
+      { name: '坐位体前屈', data: [5, 8, 28, 8, 14, 17] },
+      { name: '一分钟跳绳', data: [31, 8, 1, 37, 1, 1] },
+      { name: '一分钟仰卧起坐', data: [0, 0, 0, 15, 9, 15] },
+    ];
+
+    // 可动态添加的系列名称数组
+    let seriesNames = ['2024优秀', '2024良好', '2024及格', '2025优秀', '2025良好', '2025及格'];
+    // 扩展的颜色数组，支持更多系列
+    const colorPalette = ['#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC', '#FF9F7F', '#FFDB5C', '#37A2DA'];
+
+    // 获取颜色函数，如果系列数量超过预设颜色，则循环使用
+    function getColor(index) {
+      return colorPalette[index % colorPalette.length];
+    }
+
+    // 渲染表头
+    function renderTableHead() {
+      const thead = document.getElementById('tableHead');
+      thead.innerHTML = '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <th>项目名称</th>
+        ${seriesNames.map((name, i) => `
+          <th>
+            <input type="text" value="${name}" data-series-index="${i}" class="seriesName">
+            <button data-series-index="${i}" class="deleteSeriesBtn">🗑️</button>
+          </th>
+        `).join('')}
+        <th>删除</th>
+      `;
+      thead.appendChild(tr);
+
+      // 绑定系列名称编辑事件
+      document.querySelectorAll('.seriesName').forEach(input => {
+        input.addEventListener('blur', e => {
+          const idx = parseInt(e.target.dataset.seriesIndex);
+          seriesNames[idx] = e.target.value;
+          renderChart();
+        });
+      });
+
+      // 绑定删除系列事件
+      document.querySelectorAll('.deleteSeriesBtn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          const index = parseInt(e.target.dataset.seriesIndex);
+          // 删除系列名称
+          seriesNames.splice(index, 1);
+          // 删除所有项目对应的数据列
+          projectData.forEach(proj => {
+            proj.data.splice(index, 1);
+          });
+          renderTableHead();
+          renderTable();
+          renderChart();
+        });
+      });
+    }
+
+    // 渲染表格
+    function renderTable() {
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+      projectData.forEach((proj, i) => {
+        // 确保数据数组长度与系列数量一致
+        while (proj.data.length < seriesNames.length) {
+          proj.data.push(0);
+        }
+        while (proj.data.length > seriesNames.length) {
+          proj.data.pop();
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+      <td><input type="text" value="${proj.name}" data-index="${i}" class="projName"></td>
+      ${proj.data.map((v, j) => `<td><input type="number" value="${v}" data-row="${i}" data-col="${j}" class="projData"></td>`).join('')}
+      <td><button data-index="${i}" class="deleteBtn">🗑️</button></td>
+    `;
+        tbody.appendChild(tr);
+      });
+
+      // 删除行
+      document.querySelectorAll('.deleteBtn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          const index = e.target.dataset.index;
+          projectData.splice(index, 1);
+          renderTable();
+        });
+      });
+    }
+
+    // 渲染图表
+    function renderChart() {
+      const categories = projectData.map(p => p.name);
+      const series = seriesNames.map((name, i) => ({
+        name,
+        type: 'bar',
+        data: projectData.map(p => {
+          // 确保数据存在，如果不存在则返回0
+          return p.data[i] !== undefined ? p.data[i] : 0;
+        }),
+        itemStyle: { color: getColor(i) },
+        label: { show: true, position: 'top', fontSize: 12 }
+      }));
+
+      // const option = {
+      //   title: { text: document.getElementById('chartTitleInput').value, left:'center', top:10, textStyle:{fontSize:22,fontWeight:'bold'} },
+      //   tooltip:{ trigger:'axis', axisPointer:{type:'shadow'} },
+      //   legend:{ top:50, data:seriesNames },
+      //   grid:{ left:'5%',right:'5%',bottom:'8%',containLabel:true },
+      //   xAxis:{ type:'category', data:categories, axisLabel:{ fontSize:14 } },
+      //   yAxis:{ type:'value', name:'人数（人）', nameTextStyle:{fontSize:14} },
+      //   series
+      // };
+
+      const option = {
+        title: {
+          text: document.getElementById('chartTitleInput').value,
+          left: 'center', top: 10, textStyle: { fontSize: 22, fontWeight: 'bold' }
+        },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        legend: { top: 50, data: seriesNames },
+        grid: { left: '5%', right: '5%', bottom: '15%', containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: categories,
+          axisLabel: {
+            fontSize: 14,
+            interval: 0,      // 每个标签都显示
+            // rotate: 30       // X轴文字旋转30度，防止重叠
+          }
+        },
+        yAxis: { type: 'value', name: '人数（人）', nameTextStyle: { fontSize: 14 } },
+        dataZoom: [
+          { type: 'slider', show: true, xAxisIndex: 0, start: 0, end: 100 }, // 横向滚动条
+          { type: 'inside', xAxisIndex: 0 } // 支持鼠标滚轮/拖动缩放
+        ],
+        series
+      };
+
+      myChart.setOption(option, true);
+    }
+
+    // 初始渲染
+    renderTableHead();
+    renderTable();
+    renderChart();
+    window.addEventListener('resize', () => myChart.resize());
+
+    // 添加新项目
+    document.getElementById('addProjectBtn').addEventListener('click', () => {
+      // 创建与系列数量相同长度的数据数组
+      const newData = new Array(seriesNames.length).fill(0);
+      projectData.push({ name: '新项目', data: newData });
+      renderTable();
+    });
+
+    // 添加新系列
+    document.getElementById('addSeriesBtn').addEventListener('click', () => {
+      const newSeriesName = prompt('请输入新系列名称（例如：2024不及格）:', '2024不及格');
+      if (newSeriesName && newSeriesName.trim()) {
+        seriesNames.push(newSeriesName.trim());
+        // 为所有现有项目添加对应的数据列（初始值为0）
+        projectData.forEach(proj => {
+          proj.data.push(0);
+        });
+        renderTableHead();
+        renderTable();
+        renderChart();
+      }
+    });
+
+    // 刷新图表
+    document.getElementById('updateChartBtn').addEventListener('click', () => {
+      // 更新项目名称
+      document.querySelectorAll('.projName').forEach(input => {
+        const idx = input.dataset.index;
+        projectData[idx].name = input.value;
+      });
+      // 更新数据
+      document.querySelectorAll('.projData').forEach(input => {
+        const row = input.dataset.row;
+        const col = input.dataset.col;
+        projectData[row].data[col] = Number(input.value);
+      });
+      renderChart();
+    });
+
+    // 导出图片
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      const img = myChart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
+      const link = document.createElement('a');
+      link.href = img;
+      link.download = document.getElementById('chartTitleInput').value + '.png';
+      link.click();
+    });
+  </script>
+
+</body>
+
+</html>
