@@ -747,6 +747,41 @@ footer {
   position: relative;
 }
 
+/* 拖拽排序相关样式 */
+#dataTable tbody tr {
+  transition: background-color 0.2s;
+}
+
+#dataTable tbody tr:hover {
+  background-color: #f7fafc;
+}
+
+#dataTable tbody tr.dragging {
+  opacity: 0.5;
+  background-color: #e2e8f0;
+}
+
+#dataTable tbody tr.drag-over {
+  border-top: 3px solid #667eea;
+}
+
+/* 拖拽手柄样式 */
+.drag-handle {
+  cursor: grab;
+  font-size: 18px;
+  color: #94a3b8;
+  user-select: none;
+  padding: 8px;
+}
+
+.drag-handle:hover {
+  color: #667eea;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
 #dataTable input[type="text"],
 #dataTable input[type="number"] {
   padding: 6px 10px;

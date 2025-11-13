@@ -199,6 +199,8 @@
         let chartInstance = null;
         let projectData = [];
         let seriesNames = [];
+        let draggedElement = null;
+        let draggedIndex = null;
 
         function initCompareSystem() {
             // 默认数据
@@ -239,6 +241,7 @@
             thead.innerHTML = '';
             const tr = document.createElement('tr');
             tr.innerHTML = `
+                <th style="width: 50px;">排序</th>
                 <th>项目名称</th>
                 ${seriesNames.map((name, i) => `
                     <th>
@@ -284,7 +287,9 @@
                 }
 
                 const tr = document.createElement('tr');
+                tr.dataset.index = i;
                 tr.innerHTML = `
+                    <td class="drag-handle" draggable="true">☰</td>
                     <td><input type="text" value="${proj.name}" data-index="${i}" class="projName"></td>
                     ${proj.data.map((v, j) => `<td><input type="number" value="${v}" data-row="${i}" data-col="${j}" class="projData"></td>`).join('')}
                     <td><button data-index="${i}" class="deleteBtn">🗑️</button></td>
@@ -297,6 +302,84 @@
                     const index = e.target.dataset.index;
                     projectData.splice(index, 1);
                     renderTable();
+                    renderChart();
+                });
+            });
+
+            // 拖拽排序功能
+            // 只在拖拽手柄上触发拖拽
+            tbody.querySelectorAll('.drag-handle').forEach(handle => {
+                handle.addEventListener('dragstart', (e) => {
+                    const tr = handle.parentElement;
+                    draggedElement = tr;
+                    draggedIndex = parseInt(tr.dataset.index);
+                    tr.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/html', tr.innerHTML);
+                });
+            });
+
+            tbody.querySelectorAll('tr').forEach(tr => {
+                // 拖拽结束
+                tr.addEventListener('dragend', (e) => {
+                    tr.classList.remove('dragging');
+                    // 清除所有拖拽样式
+                    tbody.querySelectorAll('tr').forEach(row => {
+                        row.classList.remove('drag-over');
+                    });
+                });
+
+                // 拖拽经过
+                tr.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+
+                    // 清除所有行的拖拽样式
+                    tbody.querySelectorAll('tr').forEach(row => {
+                        row.classList.remove('drag-over');
+                    });
+
+                    // 为当前行添加拖拽样式
+                    if (tr !== draggedElement) {
+                        tr.classList.add('drag-over');
+                    }
+                });
+
+                // 拖拽进入
+                tr.addEventListener('dragenter', (e) => {
+                    e.preventDefault();
+                    if (tr !== draggedElement) {
+                        tr.classList.add('drag-over');
+                    }
+                });
+
+                // 拖拽离开
+                tr.addEventListener('dragleave', (e) => {
+                    tr.classList.remove('drag-over');
+                });
+
+                // 放置
+                tr.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    if (draggedElement && tr !== draggedElement) {
+                        const dropIndex = parseInt(tr.dataset.index);
+
+                        // 交换数据顺序
+                        const temp = projectData[draggedIndex];
+                        projectData[draggedIndex] = projectData[dropIndex];
+                        projectData[dropIndex] = temp;
+
+                        // 重新渲染表格和图表
+                        renderTable();
+                        renderChart();
+                    }
+
+                    // 清除所有拖拽样式
+                    tbody.querySelectorAll('tr').forEach(row => {
+                        row.classList.remove('drag-over');
+                    });
                 });
             });
         }
