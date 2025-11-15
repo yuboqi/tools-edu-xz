@@ -118,13 +118,74 @@
     <div id="compare-page" style="display: none;">
         <div class="compare-container">
             <h2>体测数据对比管理</h2>
+            
+            <!-- 顶部工具栏 -->
+            <div class="compare-toolbar">
+                <div class="toolbar-left">
+                    <button id="saveDataBtn" class="btn btn-success">💾 保存进度</button>
+                    <button id="importDataBtn" class="btn btn-primary">📥 导入数据</button>
+                    <button id="exportDataBtn" class="btn btn-secondary">📤 导出数据</button>
+                    <input type="file" id="importFileInput" accept=".json" style="display:none;">
+                </div>
+                <div class="toolbar-right">
+                    <span class="save-status" id="saveStatus">未保存</span>
+                </div>
+            </div>
+
+            <!-- 工作区标签栏 -->
+            <div class="workspace-tabs">
+                <div class="tabs-container" id="tabsContainer">
+                    <!-- 动态生成工作区标签 -->
+                </div>
+                <button id="addWorkspaceBtn" class="btn-add-workspace" title="新建工作区">➕</button>
+            </div>
+
+            <!-- 自定义Modal：新建工作区 -->
+            <div id="addWorkspaceModal" class="custom-modal">
+                <div class="custom-modal-content">
+                    <h3>📝 新建工作区</h3>
+                    <p>请输入新工作区的名称：</p>
+                    <input type="text" id="newWorkspaceName" class="modal-input" placeholder="例如：2302班数据对比" maxlength="50">
+                    <div class="custom-modal-buttons">
+                        <button id="confirmAddWorkspace" class="btn btn-primary">确认</button>
+                        <button id="cancelAddWorkspace" class="btn btn-secondary">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 自定义Modal：删除工作区确认 -->
+            <div id="deleteWorkspaceModal" class="custom-modal">
+                <div class="custom-modal-content">
+                    <h3>⚠️ 确认删除</h3>
+                    <p id="deleteWorkspaceMessage">确定要删除工作区吗？此操作不可恢复。</p>
+                    <div class="custom-modal-buttons">
+                        <button id="confirmDeleteWorkspace" class="btn btn-danger">确认删除</button>
+                        <button id="cancelDeleteWorkspace" class="btn btn-secondary">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 自定义Modal：重命名工作区 -->
+            <div id="renameWorkspaceModal" class="custom-modal">
+                <div class="custom-modal-content">
+                    <h3>✏️ 重命名工作区</h3>
+                    <p>请输入新名称：</p>
+                    <input type="text" id="renameWorkspaceName" class="modal-input" placeholder="输入新名称" maxlength="50">
+                    <div class="custom-modal-buttons">
+                        <button id="confirmRenameWorkspace" class="btn btn-primary">确认</button>
+                        <button id="cancelRenameWorkspace" class="btn btn-secondary">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据编辑控制栏 -->
             <div class="compare-controls">
                 <label>图表标题：<input type="text" id="chartTitleInput" value="2301班2024与2025体测数据对比"
                         style="width:300px;"></label>
                 <button id="addProjectBtn" class="btn btn-primary">➕ 添加项目</button>
                 <button id="addSeriesBtn" class="btn btn-primary">➕ 添加系列</button>
                 <button id="updateChartBtn" class="btn btn-success">🔄 刷新图表</button>
-                <button id="exportBtn" class="btn btn-secondary">📤 导出图片</button>
+                <button id="exportImageBtn" class="btn btn-secondary">📤 导出图片</button>
             </div>
 
             <table id="dataTable">
@@ -196,54 +257,539 @@
 
     <!-- 体测数据对比系统脚本 -->
     <script>
-        let chartInstance = null;
-        let projectData = [];
-        let seriesNames = [];
-        let draggedElement = null;
-        let draggedIndex = null;
+        // 多工作区管理系统
+        class CompareSystem {
+            constructor() {
+                this.workspaces = []; // 所有工作区
+                this.currentWorkspaceId = null; // 当前活跃工作区ID
+                this.chartInstance = null;
+                this.draggedElement = null;
+                this.draggedIndex = null;
+                this.hasUnsavedChanges = false;
 
-        function initCompareSystem() {
-            // 默认数据
-            projectData = [
+                // 初始化
+                this.init();
+            }
+
+            init() {
+                // 加载数据或创建默认工作区
+                this.loadData();
+                
+                // 初始化图表
+                const chartDom = document.getElementById('chart');
+                this.chartInstance = echarts.init(chartDom);
+                window.addEventListener('resize', () => this.chartInstance.resize());
+
+                // 绑定事件
+                this.bindEvents();
+
+                // 渲染界面
+                this.renderWorkspaceTabs();
+                this.loadWorkspace(this.currentWorkspaceId);
+            }
+
+            bindEvents() {
+                // 工作区管理
+                document.getElementById('addWorkspaceBtn').addEventListener('click', () => this.showAddWorkspaceModal());
+
+                // 数据操作
+                document.getElementById('addProjectBtn').addEventListener('click', () => this.addProject());
+                document.getElementById('addSeriesBtn').addEventListener('click', () => this.addSeries());
+                document.getElementById('updateChartBtn').addEventListener('click', () => this.updateChart());
+                document.getElementById('exportImageBtn').addEventListener('click', () => this.exportImage());
+
+                // 保存和导入导出
+                document.getElementById('saveDataBtn').addEventListener('click', () => this.saveData());
+                document.getElementById('importDataBtn').addEventListener('click', () => this.importData());
+                document.getElementById('exportDataBtn').addEventListener('click', () => this.exportData());
+                document.getElementById('importFileInput').addEventListener('change', (e) => this.handleImportFile(e));
+
+                // 监听图表标题变化
+                document.getElementById('chartTitleInput').addEventListener('input', () => {
+                    this.markUnsaved();
+                });
+
+                // 自定义Modal事件绑定
+                this.bindModalEvents();
+            }
+
+            // 绑定Modal事件
+            bindModalEvents() {
+                // 新建工作区Modal
+                document.getElementById('confirmAddWorkspace').addEventListener('click', () => this.confirmAddWorkspace());
+                document.getElementById('cancelAddWorkspace').addEventListener('click', () => this.hideAddWorkspaceModal());
+                
+                // 删除工作区Modal
+                document.getElementById('confirmDeleteWorkspace').addEventListener('click', () => this.confirmDeleteWorkspace());
+                document.getElementById('cancelDeleteWorkspace').addEventListener('click', () => this.hideDeleteWorkspaceModal());
+                
+                // 重命名工作区Modal
+                document.getElementById('confirmRenameWorkspace').addEventListener('click', () => this.confirmRenameWorkspace());
+                document.getElementById('cancelRenameWorkspace').addEventListener('click', () => this.hideRenameWorkspaceModal());
+
+                // 点击Modal背景关闭
+                document.getElementById('addWorkspaceModal').addEventListener('click', (e) => {
+                    if (e.target.id === 'addWorkspaceModal') this.hideAddWorkspaceModal();
+                });
+                document.getElementById('deleteWorkspaceModal').addEventListener('click', (e) => {
+                    if (e.target.id === 'deleteWorkspaceModal') this.hideDeleteWorkspaceModal();
+                });
+                document.getElementById('renameWorkspaceModal').addEventListener('click', (e) => {
+                    if (e.target.id === 'renameWorkspaceModal') this.hideRenameWorkspaceModal();
+                });
+
+                // Enter键确认
+                document.getElementById('newWorkspaceName').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.confirmAddWorkspace();
+                });
+                document.getElementById('renameWorkspaceName').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.confirmRenameWorkspace();
+                });
+            }
+
+            // 创建默认工作区
+            createDefaultWorkspace() {
+                const workspace = {
+                    id: this.generateId(),
+                    name: '2301班2024与2025体测数据对比',
+                    title: '2301班2024与2025体测数据对比',
+                    projectData: [
                 { name: '肺活量', data: [18, 11, 12, 11, 13, 15] },
                 { name: '50米', data: [3, 4, 33, 7, 14, 18] },
                 { name: '坐位体前屈', data: [5, 8, 28, 8, 14, 17] },
                 { name: '一分钟跳绳', data: [31, 8, 1, 37, 1, 1] },
                 { name: '一分钟仰卧起坐', data: [0, 0, 0, 15, 9, 15] },
-            ];
+                    ],
+                    seriesNames: ['2024优秀', '2024良好', '2024及格', '2025优秀', '2025良好', '2025及格']
+                };
+                return workspace;
+            }
 
-            seriesNames = ['2024优秀', '2024良好', '2024及格', '2025优秀', '2025良好', '2025及格'];
+            generateId() {
+                return 'ws_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            }
 
-            const chartDom = document.getElementById('chart');
-            chartInstance = echarts.init(chartDom);
+            // 加载数据
+            loadData() {
+                try {
+                    const savedData = localStorage.getItem('compareSystemData');
+                    if (savedData) {
+                        const data = JSON.parse(savedData);
+                        this.workspaces = data.workspaces || [];
+                        this.currentWorkspaceId = data.currentWorkspaceId || null;
+                        
+                        // 如果没有工作区，创建默认的
+                        if (this.workspaces.length === 0) {
+                            const defaultWorkspace = this.createDefaultWorkspace();
+                            this.workspaces.push(defaultWorkspace);
+                            this.currentWorkspaceId = defaultWorkspace.id;
+                        }
+                        
+                        console.log('数据加载成功', data);
+                        this.updateSaveStatus('已保存');
+                    } else {
+                        // 首次使用，创建默认工作区
+                        const defaultWorkspace = this.createDefaultWorkspace();
+                        this.workspaces.push(defaultWorkspace);
+                        this.currentWorkspaceId = defaultWorkspace.id;
+                    }
+                } catch (error) {
+                    console.error('数据加载失败:', error);
+                    const defaultWorkspace = this.createDefaultWorkspace();
+                    this.workspaces.push(defaultWorkspace);
+                    this.currentWorkspaceId = defaultWorkspace.id;
+                }
+                this.hasUnsavedChanges = false;
+            }
 
-            renderTableHead();
-            renderTable();
-            renderChart();
+            // 保存数据
+            saveData() {
+                try {
+                    // 保存当前工作区的数据
+                    this.saveCurrentWorkspace();
+                    
+                    const data = {
+                        workspaces: this.workspaces,
+                        currentWorkspaceId: this.currentWorkspaceId,
+                        savedTime: new Date().toLocaleString()
+                    };
+                    localStorage.setItem('compareSystemData', JSON.stringify(data));
+                    console.log('数据保存成功', data);
+                    this.hasUnsavedChanges = false;
+                    this.updateSaveStatus('已保存');
+                    this.showMessage('数据保存成功！', 'success');
+                } catch (error) {
+                    console.error('数据保存失败:', error);
+                    this.showMessage('数据保存失败：' + error.message, 'error');
+                }
+            }
 
-            window.addEventListener('resize', () => chartInstance.resize());
+            // 保存当前工作区数据
+            saveCurrentWorkspace() {
+                const workspace = this.getCurrentWorkspace();
+                if (!workspace) return;
 
-            // 绑定按钮事件
-            document.getElementById('addProjectBtn').addEventListener('click', addProject);
-            document.getElementById('addSeriesBtn').addEventListener('click', addSeries);
-            document.getElementById('updateChartBtn').addEventListener('click', updateChart);
-            document.getElementById('exportBtn').addEventListener('click', exportChart);
-        }
+                // 从表单读取当前数据
+                workspace.title = document.getElementById('chartTitleInput').value;
+                workspace.name = workspace.title; // 工作区名称同步为标题
 
-        const colorPalette = ['#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC', '#FF9F7F', '#FFDB5C', '#37A2DA'];
+                // 读取项目数据
+                document.querySelectorAll('.projName').forEach(input => {
+                    const idx = input.dataset.index;
+                    if (workspace.projectData[idx]) {
+                        workspace.projectData[idx].name = input.value;
+                    }
+                });
 
-        function getColor(index) {
-            return colorPalette[index % colorPalette.length];
-        }
+                document.querySelectorAll('.projData').forEach(input => {
+                    const row = input.dataset.row;
+                    const col = input.dataset.col;
+                    if (workspace.projectData[row] && workspace.projectData[row].data[col] !== undefined) {
+                        workspace.projectData[row].data[col] = Number(input.value);
+                    }
+                });
+            }
 
-        function renderTableHead() {
+            getCurrentWorkspace() {
+                return this.workspaces.find(ws => ws.id === this.currentWorkspaceId);
+            }
+
+            // 加载工作区
+            loadWorkspace(workspaceId) {
+                const workspace = this.workspaces.find(ws => ws.id === workspaceId);
+                if (!workspace) return;
+
+                this.currentWorkspaceId = workspaceId;
+                
+                // 更新标题
+                document.getElementById('chartTitleInput').value = workspace.title || workspace.name;
+
+                // 渲染表格和图表
+                this.renderTableHead(workspace);
+                this.renderTable(workspace);
+                this.renderChart(workspace);
+
+                // 更新标签高亮
+                this.renderWorkspaceTabs();
+            }
+
+            // 渲染工作区标签
+            renderWorkspaceTabs() {
+                const container = document.getElementById('tabsContainer');
+                container.innerHTML = '';
+
+                this.workspaces.forEach(workspace => {
+                    const tab = document.createElement('div');
+                    tab.className = 'workspace-tab' + (workspace.id === this.currentWorkspaceId ? ' active' : '');
+                    // 添加title属性，hover时显示完整标题
+                    tab.title = workspace.name || '未命名工作区';
+                    
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'tab-name';
+                    nameSpan.textContent = workspace.name || '未命名工作区';
+                    nameSpan.addEventListener('dblclick', () => this.showRenameWorkspaceModal(workspace.id));
+                    
+                    const closeBtn = document.createElement('button');
+                    closeBtn.className = 'tab-close';
+                    closeBtn.innerHTML = '×';
+                    closeBtn.title = '关闭工作区';
+                    closeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.showDeleteWorkspaceModal(workspace.id);
+                    });
+
+                    tab.appendChild(nameSpan);
+                    if (this.workspaces.length > 1) {
+                        tab.appendChild(closeBtn);
+                    }
+                    
+                    tab.addEventListener('click', () => {
+                        if (this.currentWorkspaceId !== workspace.id) {
+                            this.saveCurrentWorkspace();
+                            this.loadWorkspace(workspace.id);
+                        }
+                    });
+
+                    container.appendChild(tab);
+                });
+            }
+
+            // Modal：显示新建工作区
+            showAddWorkspaceModal() {
+                const modal = document.getElementById('addWorkspaceModal');
+                const input = document.getElementById('newWorkspaceName');
+                input.value = '';
+                modal.style.display = 'flex';
+                setTimeout(() => input.focus(), 100);
+            }
+
+            hideAddWorkspaceModal() {
+                document.getElementById('addWorkspaceModal').style.display = 'none';
+            }
+
+            confirmAddWorkspace() {
+                const input = document.getElementById('newWorkspaceName');
+                const name = input.value.trim();
+                
+                if (!name) {
+                    this.showMessage('请输入工作区名称！', 'warning');
+                    input.focus();
+                    return;
+                }
+
+                // 使用完整的默认数据结构
+                const newWorkspace = {
+                    id: this.generateId(),
+                    name: name,
+                    title: name,
+                    projectData: [
+                        { name: '肺活量', data: [0, 0, 0, 0, 0, 0] },
+                        { name: '50米', data: [0, 0, 0, 0, 0, 0] },
+                        { name: '坐位体前屈', data: [0, 0, 0, 0, 0, 0] },
+                        { name: '一分钟跳绳', data: [0, 0, 0, 0, 0, 0] },
+                        { name: '一分钟仰卧起坐', data: [0, 0, 0, 0, 0, 0] },
+                    ],
+                    seriesNames: ['2024优秀', '2024良好', '2024及格', '2025优秀', '2025良好', '2025及格']
+                };
+
+                this.workspaces.push(newWorkspace);
+                this.saveCurrentWorkspace();
+                this.loadWorkspace(newWorkspace.id);
+                this.hideAddWorkspaceModal();
+                // 自动保存
+                this.saveData();
+                this.showMessage('工作区创建成功！', 'success');
+            }
+
+            // Modal：显示重命名工作区
+            showRenameWorkspaceModal(workspaceId) {
+                const workspace = this.workspaces.find(ws => ws.id === workspaceId);
+                if (!workspace) return;
+
+                this.renamingWorkspaceId = workspaceId;
+                const modal = document.getElementById('renameWorkspaceModal');
+                const input = document.getElementById('renameWorkspaceName');
+                input.value = workspace.name;
+                modal.style.display = 'flex';
+                setTimeout(() => {
+                    input.focus();
+                    input.select();
+                }, 100);
+            }
+
+            hideRenameWorkspaceModal() {
+                document.getElementById('renameWorkspaceModal').style.display = 'none';
+                this.renamingWorkspaceId = null;
+            }
+
+            confirmRenameWorkspace() {
+                const input = document.getElementById('renameWorkspaceName');
+                const newName = input.value.trim();
+                
+                if (!newName) {
+                    this.showMessage('请输入工作区名称！', 'warning');
+                    input.focus();
+                    return;
+                }
+
+                const workspace = this.workspaces.find(ws => ws.id === this.renamingWorkspaceId);
+                if (!workspace) return;
+
+                workspace.name = newName;
+                workspace.title = newName;
+                
+                if (workspace.id === this.currentWorkspaceId) {
+                    document.getElementById('chartTitleInput').value = workspace.title;
+                    this.renderChart(workspace);
+                }
+                
+                this.renderWorkspaceTabs();
+                this.hideRenameWorkspaceModal();
+                this.markUnsaved();
+                this.showMessage('工作区重命名成功！', 'success');
+            }
+
+            // Modal：显示删除工作区确认
+            showDeleteWorkspaceModal(workspaceId) {
+                if (this.workspaces.length <= 1) {
+                    this.showMessage('至少需要保留一个工作区！', 'warning');
+                    return;
+                }
+
+                const workspace = this.workspaces.find(ws => ws.id === workspaceId);
+                if (!workspace) return;
+
+                this.deletingWorkspaceId = workspaceId;
+                const modal = document.getElementById('deleteWorkspaceModal');
+                const message = document.getElementById('deleteWorkspaceMessage');
+                message.innerHTML = `确定要删除工作区<br><strong>"${workspace.name}"</strong>吗？<br>此操作不可恢复。`;
+                modal.style.display = 'flex';
+            }
+
+            hideDeleteWorkspaceModal() {
+                document.getElementById('deleteWorkspaceModal').style.display = 'none';
+                this.deletingWorkspaceId = null;
+            }
+
+            confirmDeleteWorkspace() {
+                const workspaceId = this.deletingWorkspaceId;
+                if (!workspaceId) return;
+
+                const index = this.workspaces.findIndex(ws => ws.id === workspaceId);
+                if (index === -1) return;
+
+                this.workspaces.splice(index, 1);
+
+                // 如果删除的是当前工作区，切换到第一个
+                if (this.currentWorkspaceId === workspaceId) {
+                    this.loadWorkspace(this.workspaces[0].id);
+                }
+
+                this.renderWorkspaceTabs();
+                this.hideDeleteWorkspaceModal();
+                // 自动保存
+                this.saveData();
+                this.showMessage('工作区已删除', 'success');
+            }
+
+            // 导入数据
+            importData() {
+                document.getElementById('importFileInput').click();
+            }
+
+            handleImportFile(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        
+                        // 验证数据格式
+                        if (!data.workspaces || !Array.isArray(data.workspaces)) {
+                            throw new Error('数据格式不正确');
+                        }
+
+                        if (confirm('导入数据将覆盖当前所有工作区，确定要继续吗？')) {
+                            this.workspaces = data.workspaces;
+                            this.currentWorkspaceId = data.currentWorkspaceId || this.workspaces[0].id;
+                            this.loadWorkspace(this.currentWorkspaceId);
+                            this.renderWorkspaceTabs();
+                            // 自动保存
+                            this.saveData();
+                            this.showMessage('数据导入成功！', 'success');
+                        }
+                    } catch (error) {
+                        console.error('导入失败:', error);
+                        this.showMessage('数据导入失败：' + error.message, 'error');
+                    }
+                };
+                reader.readAsText(file);
+                
+                // 清空input，允许重复选择同一文件
+                event.target.value = '';
+            }
+
+            // 导出数据
+            exportData() {
+                try {
+                    this.saveCurrentWorkspace();
+                    
+                    const data = {
+                        workspaces: this.workspaces,
+                        currentWorkspaceId: this.currentWorkspaceId,
+                        exportTime: new Date().toLocaleString(),
+                        version: '1.0'
+                    };
+
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `体测数据_${new Date().toISOString().slice(0, 10)}.json`;
+                    link.click();
+                    URL.revokeObjectURL(url);
+
+                    this.showMessage('数据导出成功！', 'success');
+                } catch (error) {
+                    console.error('导出失败:', error);
+                    this.showMessage('数据导出失败：' + error.message, 'error');
+                }
+            }
+
+            // 标记未保存
+            markUnsaved() {
+                this.hasUnsavedChanges = true;
+                this.updateSaveStatus('未保存 *');
+            }
+
+            // 更新保存状态
+            updateSaveStatus(status) {
+                const statusEl = document.getElementById('saveStatus');
+                if (statusEl) {
+                    statusEl.textContent = status;
+                    statusEl.className = 'save-status ' + (status.includes('未保存') ? 'unsaved' : 'saved');
+                }
+            }
+
+            // 显示消息
+            showMessage(message, type = 'info') {
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = message;
+                
+                const colors = {
+                    success: '#38a169',
+                    error: '#e53e3e',
+                    warning: '#d69e2e',
+                    info: '#3182ce'
+                };
+
+                toast.style.cssText = `
+                    position: fixed;
+                    top: 80px;
+                    right: 20px;
+                    background: ${colors[type] || colors.info};
+                    color: white;
+                    padding: 15px 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    z-index: 2000;
+                    font-weight: 500;
+                    animation: slideIn 0.3s ease-out;
+                `;
+
+                document.body.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.style.animation = 'slideIn 0.3s ease-out reverse';
+                    setTimeout(() => {
+                        if (toast.parentNode) {
+                            document.body.removeChild(toast);
+                        }
+                    }, 300);
+                }, 3000);
+            }
+
+            getColorPalette() {
+                return ['#5470C6', '#91CC75', '#FAC858', '#EE6666', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC', '#FF9F7F', '#FFDB5C', '#37A2DA'];
+            }
+
+            getColor(index) {
+                const palette = this.getColorPalette();
+                return palette[index % palette.length];
+            }
+
+            // 渲染表头
+            renderTableHead(workspace) {
             const thead = document.getElementById('tableHead');
             thead.innerHTML = '';
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <th style="width: 50px;">排序</th>
                 <th>项目名称</th>
-                ${seriesNames.map((name, i) => `
+                    ${workspace.seriesNames.map((name, i) => `
                     <th>
                         <input type="text" value="${name}" data-series-index="${i}" class="seriesName">
                         <button data-series-index="${i}" class="deleteSeriesBtn">🗑️</button>
@@ -256,33 +802,36 @@
             document.querySelectorAll('.seriesName').forEach(input => {
                 input.addEventListener('blur', e => {
                     const idx = parseInt(e.target.dataset.seriesIndex);
-                    seriesNames[idx] = e.target.value;
-                    renderChart();
-                });
+                        workspace.seriesNames[idx] = e.target.value;
+                        this.renderChart(workspace);
+                        this.markUnsaved();
+                    });
             });
 
             document.querySelectorAll('.deleteSeriesBtn').forEach(btn => {
                 btn.addEventListener('click', e => {
                     const index = parseInt(e.target.dataset.seriesIndex);
-                    seriesNames.splice(index, 1);
-                    projectData.forEach(proj => {
+                        workspace.seriesNames.splice(index, 1);
+                        workspace.projectData.forEach(proj => {
                         proj.data.splice(index, 1);
-                    });
-                    renderTableHead();
-                    renderTable();
-                    renderChart();
+                        });
+                        this.renderTableHead(workspace);
+                        this.renderTable(workspace);
+                        this.renderChart(workspace);
+                        this.markUnsaved();
                 });
             });
         }
 
-        function renderTable() {
+            // 渲染表格
+            renderTable(workspace) {
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = '';
-            projectData.forEach((proj, i) => {
-                while (proj.data.length < seriesNames.length) {
+                workspace.projectData.forEach((proj, i) => {
+                    while (proj.data.length < workspace.seriesNames.length) {
                     proj.data.push(0);
                 }
-                while (proj.data.length > seriesNames.length) {
+                    while (proj.data.length > workspace.seriesNames.length) {
                     proj.data.pop();
                 }
 
@@ -300,19 +849,19 @@
             document.querySelectorAll('.deleteBtn').forEach(btn => {
                 btn.addEventListener('click', e => {
                     const index = e.target.dataset.index;
-                    projectData.splice(index, 1);
-                    renderTable();
-                    renderChart();
-                });
+                        workspace.projectData.splice(index, 1);
+                        this.renderTable(workspace);
+                        this.renderChart(workspace);
+                        this.markUnsaved();
+                    });
             });
 
             // 拖拽排序功能
-            // 只在拖拽手柄上触发拖拽
             tbody.querySelectorAll('.drag-handle').forEach(handle => {
                 handle.addEventListener('dragstart', (e) => {
                     const tr = handle.parentElement;
-                    draggedElement = tr;
-                    draggedIndex = parseInt(tr.dataset.index);
+                        this.draggedElement = tr;
+                        this.draggedIndex = parseInt(tr.dataset.index);
                     tr.classList.add('dragging');
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('text/html', tr.innerHTML);
@@ -320,63 +869,49 @@
             });
 
             tbody.querySelectorAll('tr').forEach(tr => {
-                // 拖拽结束
                 tr.addEventListener('dragend', (e) => {
                     tr.classList.remove('dragging');
-                    // 清除所有拖拽样式
                     tbody.querySelectorAll('tr').forEach(row => {
                         row.classList.remove('drag-over');
                     });
                 });
 
-                // 拖拽经过
                 tr.addEventListener('dragover', (e) => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'move';
-
-                    // 清除所有行的拖拽样式
                     tbody.querySelectorAll('tr').forEach(row => {
                         row.classList.remove('drag-over');
                     });
-
-                    // 为当前行添加拖拽样式
-                    if (tr !== draggedElement) {
+                        if (tr !== this.draggedElement) {
                         tr.classList.add('drag-over');
                     }
                 });
 
-                // 拖拽进入
                 tr.addEventListener('dragenter', (e) => {
                     e.preventDefault();
-                    if (tr !== draggedElement) {
+                        if (tr !== this.draggedElement) {
                         tr.classList.add('drag-over');
                     }
                 });
 
-                // 拖拽离开
                 tr.addEventListener('dragleave', (e) => {
                     tr.classList.remove('drag-over');
                 });
 
-                // 放置
                 tr.addEventListener('drop', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
 
-                    if (draggedElement && tr !== draggedElement) {
+                        if (this.draggedElement && tr !== this.draggedElement) {
                         const dropIndex = parseInt(tr.dataset.index);
+                            const temp = workspace.projectData[this.draggedIndex];
+                            workspace.projectData[this.draggedIndex] = workspace.projectData[dropIndex];
+                            workspace.projectData[dropIndex] = temp;
+                            this.renderTable(workspace);
+                            this.renderChart(workspace);
+                            this.markUnsaved();
+                        }
 
-                        // 交换数据顺序
-                        const temp = projectData[draggedIndex];
-                        projectData[draggedIndex] = projectData[dropIndex];
-                        projectData[dropIndex] = temp;
-
-                        // 重新渲染表格和图表
-                        renderTable();
-                        renderChart();
-                    }
-
-                    // 清除所有拖拽样式
                     tbody.querySelectorAll('tr').forEach(row => {
                         row.classList.remove('drag-over');
                     });
@@ -384,25 +919,26 @@
             });
         }
 
-        function renderChart() {
-            const categories = projectData.map(p => p.name);
-            const series = seriesNames.map((name, i) => ({
+            // 渲染图表
+            renderChart(workspace) {
+                const categories = workspace.projectData.map(p => p.name);
+                const series = workspace.seriesNames.map((name, i) => ({
                 name,
                 type: 'bar',
-                data: projectData.map(p => {
+                    data: workspace.projectData.map(p => {
                     return p.data[i] !== undefined ? p.data[i] : 0;
                 }),
-                itemStyle: { color: getColor(i) },
+                    itemStyle: { color: this.getColor(i) },
                 label: { show: true, position: 'top', fontSize: 12 }
             }));
 
             const option = {
                 title: {
-                    text: document.getElementById('chartTitleInput').value,
+                        text: workspace.title || workspace.name,
                     left: 'center', top: 10, textStyle: { fontSize: 22, fontWeight: 'bold' }
                 },
                 tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-                legend: { top: 50, data: seriesNames },
+                    legend: { top: 50, data: workspace.seriesNames },
                 grid: { left: '5%', right: '5%', bottom: '15%', containLabel: true },
                 xAxis: {
                     type: 'category',
@@ -420,47 +956,87 @@
                 series
             };
 
-            chartInstance.setOption(option, true);
-        }
+                this.chartInstance.setOption(option, true);
+            }
 
-        function addProject() {
-            const newData = new Array(seriesNames.length).fill(0);
-            projectData.push({ name: '新项目', data: newData });
-            renderTable();
-        }
+            // 添加项目
+            addProject() {
+                const workspace = this.getCurrentWorkspace();
+                if (!workspace) return;
 
-        function addSeries() {
+                const newData = new Array(workspace.seriesNames.length).fill(0);
+                workspace.projectData.push({ name: '新项目', data: newData });
+                this.renderTable(workspace);
+                this.markUnsaved();
+            }
+
+            // 添加系列
+            addSeries() {
+                const workspace = this.getCurrentWorkspace();
+                if (!workspace) return;
+
             const newSeriesName = prompt('请输入新系列名称（例如：2024不及格）:', '2024不及格');
             if (newSeriesName && newSeriesName.trim()) {
-                seriesNames.push(newSeriesName.trim());
-                projectData.forEach(proj => {
+                    workspace.seriesNames.push(newSeriesName.trim());
+                    workspace.projectData.forEach(proj => {
                     proj.data.push(0);
                 });
-                renderTableHead();
-                renderTable();
-                renderChart();
+                    this.renderTableHead(workspace);
+                    this.renderTable(workspace);
+                    this.renderChart(workspace);
+                    this.markUnsaved();
+                }
             }
-        }
 
-        function updateChart() {
+            // 更新图表
+            updateChart() {
+                const workspace = this.getCurrentWorkspace();
+                if (!workspace) return;
+
             document.querySelectorAll('.projName').forEach(input => {
                 const idx = input.dataset.index;
-                projectData[idx].name = input.value;
+                    if (workspace.projectData[idx]) {
+                        workspace.projectData[idx].name = input.value;
+                    }
             });
             document.querySelectorAll('.projData').forEach(input => {
                 const row = input.dataset.row;
                 const col = input.dataset.col;
-                projectData[row].data[col] = Number(input.value);
-            });
-            renderChart();
-        }
+                    if (workspace.projectData[row] && workspace.projectData[row].data[col] !== undefined) {
+                        workspace.projectData[row].data[col] = Number(input.value);
+                    }
+                });
+                
+                workspace.title = document.getElementById('chartTitleInput').value;
+                workspace.name = workspace.title;
+                
+                this.renderChart(workspace);
+                this.renderWorkspaceTabs();
+                this.markUnsaved();
+            }
 
-        function exportChart() {
-            const img = chartInstance.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
+            // 导出图片
+            exportImage() {
+                const workspace = this.getCurrentWorkspace();
+                if (!workspace) return;
+
+                const img = this.chartInstance.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
             const link = document.createElement('a');
             link.href = img;
-            link.download = document.getElementById('chartTitleInput').value + '.png';
+                link.download = (workspace.title || workspace.name) + '.png';
             link.click();
+                this.showMessage('图片导出成功！', 'success');
+            }
+        }
+
+        // 全局实例
+        let compareSystemInstance = null;
+
+        // 初始化函数
+        function initCompareSystem() {
+            if (!compareSystemInstance) {
+                compareSystemInstance = new CompareSystem();
+            }
         }
     </script>
 </body>
